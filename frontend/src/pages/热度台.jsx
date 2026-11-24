@@ -38,6 +38,23 @@ export default function 热度台() {
           ) : null}
         </div>
       )}
+      {数.权重戳数 != null && (
+        <div className="提示条">
+          权重世代戳：<b>{数.权重戳数}</b> 枚 · 已累计窗 <b>{数.已累计窗}</b> · 持戳窗{" "}
+          <b>{数.持戳窗}</b>
+          {数.缺戳窗 > 0 ? (
+            <span>
+              {" "}· <span className="徽章 败">缺戳 {数.缺戳窗}</span> 禁止发射/修正，去{" "}
+              <Link to="/权重世代">权重世代核证</Link> 查
+            </span>
+          ) : (
+            <span>
+              {" "}· <span className="徽章 通">全部持戳</span> 入窗戳冻结发射，现行权重不回溯·
+              去 <Link to="/权重世代">权重世代核证</Link>
+            </span>
+          )}
+        </div>
+      )}
       <div className="行"><button className="次" onClick={刷}>刷新台面</button></div>
       {末 ? (
         <div className="行" style={{ gap: "0.7rem" }}>

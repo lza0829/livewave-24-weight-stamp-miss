@@ -35,7 +35,9 @@ CREATE TABLE IF NOT EXISTS 互动事件 (
   送礼额 INTEGER NOT NULL DEFAULT 0,
   命运 TEXT NOT NULL DEFAULT '已入流',
   窗键 TEXT NOT NULL DEFAULT '',
-  批次编号 TEXT NOT NULL DEFAULT ''
+  批次编号 TEXT NOT NULL DEFAULT '',
+  主指标权重 INTEGER NOT NULL DEFAULT 0,
+  主指标公式版本 TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS 装载批次 (
   编号 TEXT PRIMARY KEY,
@@ -118,6 +120,10 @@ CREATE TABLE IF NOT EXISTS 热度口径变更 (
     "旧主指标": "INTEGER NOT NULL DEFAULT 0",
     "新主指标": "INTEGER NOT NULL DEFAULT 0",
 }
+互动事件补列 = {
+    "主指标权重": "INTEGER NOT NULL DEFAULT 0",
+    "主指标公式版本": "TEXT NOT NULL DEFAULT ''",
+}
 
 
 def 此刻() -> str:
@@ -150,6 +156,7 @@ def 初始化库() -> None:
             if k not in 已有:
                 conn.execute("INSERT INTO 站规(键, 值) VALUES (?, ?)", (k, v))
         迁移热度窗(conn)
+        迁移权重戳(conn)
         if conn.execute("SELECT COUNT(*) AS c FROM 直播间").fetchone()["c"] == 0:
             conn.execute(
                 "INSERT INTO 直播间(房间键, 标题, 主播, 开播事件时, 状态) VALUES (?,?,?,?,?)",
@@ -167,6 +174,40 @@ def 初始化库() -> None:
         conn.close()
 
 
+def 迁移权重戳(conn) -> None:
+    """为历史已累计但缺戳的窗补写一枚权重世代戳（取窗行冻结世代）。
+
+    口径：入窗戳冻结发射。老库里的窗行已有冻结公式/权重/主指标，
+    补戳只是把同世代钉死，不改任何累计值；戳内主指标 = 窗行主指标。
+    """
+    from app.modules import 权重世代戳 as 权
+
+    for 窗 in conn.execute(
+        "SELECT * FROM 热度窗 WHERE 事件笔数>0"
+    ).fetchall():
+        if conn.execute(
+            "SELECT 1 FROM 权重世代戳 WHERE 窗键=? LIMIT 1", (窗["窗键"],)
+        ).fetchone():
+            continue
+        公式 = (窗["主指标公式"] or "").strip()
+        if not 公式:
+            # 无冻结公式的旧窗无法安全补戳；保持无戳，发射/修正会失败闭。
+            continue
+        try:
+            权.打戳(
+                conn,
+                窗键=窗["窗键"],
+                公式=公式,
+                权重=int(窗["主指标权重"]),
+                口径版本=int(窗["口径版本"] or 0),
+                累计主指标=int(窗["主指标"] or 0),
+                时刻=窗["关闭处理时"] or 此刻(),
+            )
+        except 权.戳异常:
+            # 补戳失败不阻塞启动；该窗后续发射/修正将失败闭，绝不按现行权重回溯。
+            continue
+
+
 def 迁移热度窗(conn) -> None:
     """补主指标列；对早已关闭但未冻结口径的窗，按当时站规补冻结值。"""
     from app.services import 口径
@@ -175,6 +216,11 @@ def 迁移热度窗(conn) -> None:
     for 名, 定义 in 撤回单补列.items():
         if 名 not in 列:
             conn.execute(f"ALTER TABLE 撤回单 ADD COLUMN {名} {定义}")
+
+    列 = {r["name"] for r in conn.execute("PRAGMA table_info(互动事件)")}
+    for 名, 定义 in 互动事件补列.items():
+        if 名 not in 列:
+            conn.execute(f"ALTER TABLE 互动事件 ADD COLUMN {名} {定义}")
 
     列 = {r["name"] for r in conn.execute("PRAGMA table_info(热度窗)")}
     新加 = [名 for 名 in 热度窗补列 if 名 not in 列]

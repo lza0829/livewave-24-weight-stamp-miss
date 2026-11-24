@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 from app.db import 夹具目录, 连接
 from app.services import 装载, 贯验, 目录, 口径
+from app.modules import 权重世代戳 as 权
 
 路由 = APIRouter(prefix="/api")
 
@@ -171,6 +172,9 @@ def 做装载(体: 装载请求):
         raise HTTPException(409, str(e))
     except 口径.口径无效 as e:
         raise HTTPException(422, str(e))
+    except 权.戳异常 as e:
+        # 权重世代戳缺失/腐坏：整票已回滚，失败闭。
+        raise HTTPException(422, f"权重世代戳核证失败，本批未提交：{e}")
 
 
 @路由.post("/装载/夹具")
@@ -178,7 +182,14 @@ def 装夹具(名: str = "准时热度样例"):
     路径 = 夹具目录 / f"{名}.json"
     if not 路径.exists():
         raise HTTPException(404, f"夹具不存在:{名}")
-    return 装载.装一批(json.loads(路径.read_text(encoding="utf-8")))
+    try:
+        return 装载.装一批(json.loads(路径.read_text(encoding="utf-8")))
+    except 口径.并发冲突 as e:
+        raise HTTPException(409, str(e))
+    except 口径.口径无效 as e:
+        raise HTTPException(422, str(e))
+    except 权.戳异常 as e:
+        raise HTTPException(422, f"权重世代戳核证失败，本批未提交：{e}")
 
 
 @路由.post("/贯验")
@@ -203,8 +214,6 @@ def 空桩():
     from app import modules
 
     return modules.列表()
-
-from app.modules import 权重世代戳 as 权
 
 
 @路由.get("/核证/权重世代")

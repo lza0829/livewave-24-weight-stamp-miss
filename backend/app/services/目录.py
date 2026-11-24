@@ -17,6 +17,11 @@ def 总览() -> dict:
             "SELECT 主指标公式 AS 公式, COUNT(*) AS 数 FROM 热度窗 WHERE 状态='已关闭' GROUP BY 主指标公式"
         ):
             已关窗分布[r["公式"] or "未冻结"] = r["数"]
+        已累计窗 = c("SELECT COUNT(*) FROM 热度窗 WHERE 事件笔数>0")
+        有戳窗 = c(
+            "SELECT COUNT(*) FROM (SELECT DISTINCT 窗键 FROM 权重世代戳) t "
+            "JOIN 热度窗 w ON w.窗键=t.窗键 WHERE w.事件笔数>0"
+        )
         return {
             "直播间": c("SELECT COUNT(*) FROM 直播间"),
             "互动事件": c("SELECT COUNT(*) FROM 互动事件"),
@@ -28,6 +33,10 @@ def 总览() -> dict:
             "撤回单": c("SELECT COUNT(*) FROM 撤回单"),
             "旁路匣": c("SELECT COUNT(*) FROM 旁路匣"),
             "装载批次": c("SELECT COUNT(*) FROM 装载批次"),
+            "权重戳数": c("SELECT COUNT(*) FROM 权重世代戳"),
+            "已累计窗": 已累计窗,
+            "持戳窗": 有戳窗,
+            "缺戳窗": 已累计窗 - 有戳窗,
             "末次贯验": dict(末) if 末 else None,
             "口径": 当前口径,
             "已关窗口径分布": 已关窗分布,
